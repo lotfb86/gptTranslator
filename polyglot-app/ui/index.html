@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Polyglot</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f1115;
+        --panel: #1a1d23;
+        --text: #e8eaed;
+        --muted: #8a8f98;
+        --accent: #4f8cff;
+        --accent-on: #6aa2ff;
+        --danger: #e0584b;
+        --ok: #3fb966;
+        --border: #2a2f38;
+      }
+
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f7f7f9;
+          --panel: #ffffff;
+          --text: #1a1d23;
+          --muted: #5e636c;
+          --border: #e5e7eb;
+        }
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+        font-size: 14px;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .app {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        gap: 12px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .title {
+        font-weight: 600;
+        font-size: 16px;
+        letter-spacing: -0.01em;
+      }
+
+      .status {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .dot.on { background: var(--ok); }
+      .dot.error { background: var(--danger); }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      select {
+        appearance: none;
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 14px;
+        font-family: inherit;
+      }
+
+      .toggle {
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 14px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 120ms ease;
+      }
+
+      .toggle:hover { background: var(--accent-on); }
+      .toggle.on { background: var(--danger); }
+      .toggle:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      .transcript {
+        flex: 1;
+        overflow-y: auto;
+        font-size: 13px;
+        line-height: 1.5;
+        padding-right: 2px;
+      }
+
+      .transcript .source { color: var(--muted); }
+      .transcript .translated { color: var(--text); }
+      .transcript .line { margin-bottom: 6px; word-wrap: break-word; }
+
+      .err {
+        color: var(--danger);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="title">Polyglot</div>
+        <div class="status">
+          <span class="dot" id="status-dot"></span>
+          <span id="status-text">Off</span>
+        </div>
+      </header>
+
+      <div class="panel">
+        <label>
+          They speak
+          <select id="target-language">
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="hi">Hindi</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+            <option value="pt">Portuguese</option>
+            <option value="it">Italian</option>
+            <option value="ru">Russian</option>
+            <option value="vi">Vietnamese</option>
+            <option value="id">Indonesian</option>
+            <option value="en">English (testing)</option>
+          </select>
+        </label>
+        <button id="toggle" class="toggle">Start translation</button>
+        <div id="error" class="err"></div>
+      </div>
+
+      <div class="panel" style="flex: 1; min-height: 0;">
+        <div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em;">Transcript</div>
+        <div id="transcript" class="transcript"></div>
+      </div>
+    </div>
+
+    <script>
+      const { invoke } = window.__TAURI__.core;
+      const { listen } = window.__TAURI__.event;
+
+      const toggleBtn = document.getElementById('toggle');
+      const targetSelect = document.getElementById('target-language');
+      const statusDot = document.getElementById('status-dot');
+      const statusText = document.getElementById('status-text');
+      const transcriptDiv = document.getElementById('transcript');
+      const errorDiv = document.getElementById('error');
+
+      let running = false;
+      let currentLine = null;
+      let currentKind = null;
+
+      function setStatus(state, msg) {
+        statusDot.className = 'dot' + (state === 'on' ? ' on' : state === 'error' ? ' error' : '');
+        statusText.textContent = msg;
+      }
+
+      function setRunning(isRunning) {
+        running = isRunning;
+        toggleBtn.textContent = isRunning ? 'Stop translation' : 'Start translation';
+        toggleBtn.classList.toggle('on', isRunning);
+        targetSelect.disabled = isRunning;
+        toggleBtn.disabled = false;
+      }
+
+      function appendTranscript(kind, delta, done) {
+        // If the kind switches mid-line, start a new line
+        if (currentKind !== kind || !currentLine) {
+          currentLine = document.createElement('div');
+          currentLine.className = 'line ' + kind;
+          transcriptDiv.appendChild(currentLine);
+          currentKind = kind;
+        }
+        if (delta) currentLine.textContent += delta;
+        transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+        if (done) {
+          currentLine = null;
+          currentKind = null;
+        }
+      }
+
+      toggleBtn.addEventListener('click', async () => {
+        errorDiv.textContent = '';
+        toggleBtn.disabled = true;
+        try {
+          if (running) {
+            await invoke('stop_session');
+          } else {
+            const target = targetSelect.value;
+            await invoke('start_session', { target });
+          }
+        } catch (e) {
+          errorDiv.textContent = String(e);
+          setStatus('error', 'Error');
+          toggleBtn.disabled = false;
+        }
+      });
+
+      listen('session-status', (event) => {
+        const { running: r, target, message } = event.payload;
+        setRunning(!!r);
+        if (message) {
+          errorDiv.textContent = message;
+          setStatus('error', 'Error');
+        } else if (r) {
+          setStatus('on', target ? `Translating to ${target.toUpperCase()}` : 'Running');
+        } else {
+          setStatus('off', 'Off');
+        }
+      });
+
+      listen('transcript', (event) => {
+        const { kind, delta, done } = event.payload;
+        appendTranscript(kind, delta, done);
+      });
+
+      // Initial state
+      invoke('get_status').then((isRunning) => {
+        setRunning(isRunning);
+        setStatus(isRunning ? 'on' : 'off', isRunning ? 'Running' : 'Off');
+      }).catch(() => {});
+    </script>
+  </body>
+</html>

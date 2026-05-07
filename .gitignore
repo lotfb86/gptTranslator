@@ -18,6 +18,10 @@ target/
 **/*.rs.bk
 *.pdb
 
+# Tauri
+polyglot-app/src-tauri/Cargo.lock
+polyglot-app/src-tauri/gen/schemas/
+
 # Swift / Xcode
 .build/
 DerivedData/
