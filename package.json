@@ -1,0 +1,17 @@
+{
+  "name": "gpt-translator-spike",
+  "version": "0.0.1",
+  "description": "Phase 0 sanity check for OpenAI gpt-realtime-translate",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "translate": "node phase0/translate.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
