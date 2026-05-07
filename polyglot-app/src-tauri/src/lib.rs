@@ -26,6 +26,7 @@ const VALID_TARGETS: &[&str] = &[
 pub enum AudioCommand {
     Start {
         target: String,
+        output_device: Option<String>,
         response: oneshot::Sender<Result<(), String>>,
     },
     Stop {
@@ -56,11 +57,19 @@ pub struct TranscriptUpdate {
     pub done: bool,
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceInfo {
+    pub name: String,
+    pub is_default: bool,
+}
+
 // ---------- Tauri commands ----------
 
 #[tauri::command]
 async fn start_session(
     target: String,
+    output_device: Option<String>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let target = target.to_lowercase();
@@ -75,6 +84,7 @@ async fn start_session(
         .audio_tx
         .send(AudioCommand::Start {
             target,
+            output_device,
             response: response_tx,
         })
         .await
@@ -83,6 +93,25 @@ async fn start_session(
     response_rx
         .await
         .map_err(|_| "Audio coordinator dropped response".to_string())?
+}
+
+#[tauri::command]
+fn get_output_devices() -> Result<Vec<DeviceInfo>, String> {
+    let host = cpal::default_host();
+    let default_name = host
+        .default_output_device()
+        .and_then(|d| d.name().ok());
+
+    let devices = host
+        .output_devices()
+        .map_err(|e| e.to_string())?
+        .filter_map(|d| {
+            let name = d.name().ok()?;
+            let is_default = default_name.as_ref() == Some(&name);
+            Some(DeviceInfo { name, is_default })
+        })
+        .collect();
+    Ok(devices)
 }
 
 #[tauri::command]
@@ -144,7 +173,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_session,
             stop_session,
-            get_status
+            get_status,
+            get_output_devices
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -169,12 +199,12 @@ fn audio_coordinator_thread(
 
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
-                AudioCommand::Start { target, response } => {
+                AudioCommand::Start { target, output_device, response } => {
                     if active.is_some() {
                         let _ = response.send(Err("Session already running".into()));
                         continue;
                     }
-                    match start_running_session(target.clone(), app.clone()).await {
+                    match start_running_session(target.clone(), output_device, app.clone()).await {
                         Ok(sess) => {
                             active = Some(sess);
                             *state.running.lock().await = true;
@@ -243,7 +273,11 @@ impl RunningSession {
     }
 }
 
-async fn start_running_session(target: String, app: AppHandle) -> Result<RunningSession> {
+async fn start_running_session(
+    target: String,
+    output_device: Option<String>,
+    app: AppHandle,
+) -> Result<RunningSession> {
     let api_key = std::env::var("OPENAI_API_KEY")
         .context("Missing OPENAI_API_KEY (set in .env at repo root)")?;
 
@@ -252,7 +286,7 @@ async fn start_running_session(target: String, app: AppHandle) -> Result<Running
     let (play_prod, play_cons) = rb.split();
 
     let input_stream = setup_input_stream(mic_tx)?;
-    let output_stream = setup_output_stream(play_cons)?;
+    let output_stream = setup_output_stream(play_cons, output_device)?;
 
     let (cancel_tx, cancel_rx) = oneshot::channel();
     let target_for_task = target.clone();
@@ -354,11 +388,17 @@ impl PlaybackState {
     }
 }
 
-fn setup_output_stream(mut cons: HeapCons<i16>) -> Result<Stream> {
+fn setup_output_stream(mut cons: HeapCons<i16>, device_name: Option<String>) -> Result<Stream> {
     let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .context("No default output device")?;
+    let device = match device_name.as_deref() {
+        Some(name) => host
+            .output_devices()?
+            .find(|d| d.name().ok().as_deref() == Some(name))
+            .with_context(|| format!("Output device '{name}' not found"))?,
+        None => host
+            .default_output_device()
+            .context("No default output device")?,
+    };
     let supported = device.default_output_config()?;
     let sample_format = supported.sample_format();
     let channels = supported.channels();

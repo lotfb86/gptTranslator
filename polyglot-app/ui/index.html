@@ -171,6 +171,10 @@
             <option value="en">English (testing)</option>
           </select>
         </label>
+        <label>
+          Send translated audio to
+          <select id="output-device"><option value="">Loading…</option></select>
+        </label>
         <button id="toggle" class="toggle">Start translation</button>
         <div id="error" class="err"></div>
       </div>
@@ -187,6 +191,7 @@
 
       const toggleBtn = document.getElementById('toggle');
       const targetSelect = document.getElementById('target-language');
+      const outputDeviceSelect = document.getElementById('output-device');
       const statusDot = document.getElementById('status-dot');
       const statusText = document.getElementById('status-text');
       const transcriptDiv = document.getElementById('transcript');
@@ -195,6 +200,39 @@
       let running = false;
       let currentLine = null;
       let currentKind = null;
+
+      async function loadOutputDevices() {
+        try {
+          const devices = await invoke('get_output_devices');
+          outputDeviceSelect.innerHTML = '';
+          devices.forEach((d) => {
+            const opt = document.createElement('option');
+            opt.value = d.name;
+            opt.textContent = d.name + (d.isDefault ? ' (default)' : '');
+            outputDeviceSelect.appendChild(opt);
+          });
+          const saved = localStorage.getItem('outputDevice');
+          const blackhole = devices.find((d) => /blackhole/i.test(d.name));
+          if (saved && devices.some((d) => d.name === saved)) {
+            outputDeviceSelect.value = saved;
+          } else if (blackhole) {
+            outputDeviceSelect.value = blackhole.name;
+          }
+        } catch (e) {
+          outputDeviceSelect.innerHTML = '<option value="">(error loading devices)</option>';
+          errorDiv.textContent = 'Failed to load output devices: ' + e;
+        }
+      }
+      outputDeviceSelect.addEventListener('change', () => {
+        localStorage.setItem('outputDevice', outputDeviceSelect.value);
+      });
+
+      // Restore saved language
+      const savedTarget = localStorage.getItem('targetLanguage');
+      if (savedTarget) targetSelect.value = savedTarget;
+      targetSelect.addEventListener('change', () => {
+        localStorage.setItem('targetLanguage', targetSelect.value);
+      });
 
       function setStatus(state, msg) {
         statusDot.className = 'dot' + (state === 'on' ? ' on' : state === 'error' ? ' error' : '');
@@ -206,6 +244,7 @@
         toggleBtn.textContent = isRunning ? 'Stop translation' : 'Start translation';
         toggleBtn.classList.toggle('on', isRunning);
         targetSelect.disabled = isRunning;
+        outputDeviceSelect.disabled = isRunning;
         toggleBtn.disabled = false;
       }
 
@@ -233,7 +272,8 @@
             await invoke('stop_session');
           } else {
             const target = targetSelect.value;
-            await invoke('start_session', { target });
+            const outputDevice = outputDeviceSelect.value || null;
+            await invoke('start_session', { target, outputDevice });
           }
         } catch (e) {
           errorDiv.textContent = String(e);
@@ -261,6 +301,7 @@
       });
 
       // Initial state
+      loadOutputDevices();
       invoke('get_status').then((isRunning) => {
         setRunning(isRunning);
         setStatus(isRunning ? 'on' : 'off', isRunning ? 'Running' : 'Off');
