@@ -190,25 +190,28 @@ fn downsample_f32_to_i16(data: &[f32], channels: u16, in_sr: u32) -> Vec<i16> {
     out
 }
 
-// Output device sample-rate is usually 48 kHz; OpenAI sends us 24 kHz.
-// We hold each 24 kHz sample for (out_sr / 24000) output frames (zero-order hold).
+// Output device runs at out_sr (typically 44.1k or 48k); OpenAI gives us 24k.
+// Walk the 24k stream by `step = 24000 / out_sr` per output frame (zero-order hold).
+// Pop a new sample every time the integer index advances. Handles non-integer ratios.
 fn fill_output_f32(data: &mut [f32], channels: u16, cons: &mut HeapCons<i16>, out_sr: u32) {
     let ch = channels.max(1) as usize;
-    let upsample_factor = (out_sr / TARGET_SAMPLE_RATE).max(1) as usize;
+    let step = TARGET_SAMPLE_RATE as f64 / out_sr as f64;
 
-    let mut frame_idx_in_hold = 0usize;
-    let mut current = 0i16;
+    let mut pos: f64 = 0.0;
+    let mut last_idx: i64 = -1;
+    let mut current_sample: i16 = 0;
 
     for frame in data.chunks_mut(ch) {
-        if frame_idx_in_hold == 0 {
-            current = cons.try_pop().unwrap_or(0);
+        let idx = pos.floor() as i64;
+        while last_idx < idx {
+            current_sample = cons.try_pop().unwrap_or(0);
+            last_idx += 1;
         }
-        frame_idx_in_hold = (frame_idx_in_hold + 1) % upsample_factor;
-
-        let f = current as f32 / 32768.0;
+        let f = current_sample as f32 / 32768.0;
         for ch_sample in frame.iter_mut() {
             *ch_sample = f;
         }
+        pos += step;
     }
 }
 
