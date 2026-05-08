@@ -22,6 +22,12 @@ target/
 polyglot-app/src-tauri/Cargo.lock
 polyglot-app/src-tauri/gen/schemas/
 
+# Vendored upstream sources (rebuilt via scripts/build-audiotee.sh)
+vendor/
+
+# Claude Code workspace
+.claude/
+
 # Swift / Xcode
 .build/
 DerivedData/

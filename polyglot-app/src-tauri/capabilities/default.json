@@ -9,6 +9,26 @@
     "core:event:allow-emit",
     "core:event:allow-listen",
     "core:webview:default",
-    "core:window:default"
+    "core:window:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/audiotee",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "ps",
+          "cmd": "ps",
+          "args": true
+        }
+      ]
+    }
   ]
 }

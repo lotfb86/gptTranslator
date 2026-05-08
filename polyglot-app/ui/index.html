@@ -45,8 +45,8 @@
         height: 100vh;
         display: flex;
         flex-direction: column;
-        padding: 16px;
-        gap: 12px;
+        padding: 14px;
+        gap: 10px;
       }
 
       header {
@@ -61,24 +61,6 @@
         letter-spacing: -0.01em;
       }
 
-      .status {
-        font-size: 12px;
-        color: var(--muted);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--muted);
-      }
-
-      .dot.on { background: var(--ok); }
-      .dot.error { background: var(--danger); }
-
       .panel {
         background: var(--panel);
         border: 1px solid var(--border);
@@ -86,14 +68,45 @@
         padding: 12px;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
       }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .panel-title {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+
+      .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .dot.on { background: var(--ok); }
+      .dot.error { background: var(--danger); }
 
       label {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        font-size: 12px;
+        gap: 4px;
+        font-size: 11px;
         color: var(--muted);
       }
 
@@ -103,8 +116,8 @@
         color: var(--text);
         border: 1px solid var(--border);
         border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 14px;
+        padding: 7px 10px;
+        font-size: 13px;
         font-family: inherit;
       }
 
@@ -113,11 +126,12 @@
         color: white;
         border: none;
         border-radius: 8px;
-        padding: 14px;
-        font-size: 16px;
+        padding: 11px;
+        font-size: 14px;
         font-weight: 600;
         cursor: pointer;
         transition: background 120ms ease;
+        margin-top: 4px;
       }
 
       .toggle:hover { background: var(--accent-on); }
@@ -127,18 +141,35 @@
       .transcript {
         flex: 1;
         overflow-y: auto;
-        font-size: 13px;
+        font-size: 12px;
         line-height: 1.5;
         padding-right: 2px;
+        min-height: 0;
       }
 
-      .transcript .source { color: var(--muted); }
+      .transcript .line {
+        margin-bottom: 5px;
+        word-wrap: break-word;
+        padding: 3px 6px;
+        border-left: 2px solid transparent;
+        border-radius: 3px;
+      }
+
+      .transcript .outgoing {
+        border-left-color: var(--accent);
+      }
+
+      .transcript .incoming {
+        border-left-color: #b87cff;
+      }
+
+      .transcript .source { color: var(--muted); font-style: italic; }
       .transcript .translated { color: var(--text); }
-      .transcript .line { margin-bottom: 6px; word-wrap: break-word; }
 
       .err {
         color: var(--danger);
-        font-size: 12px;
+        font-size: 11px;
+        min-height: 1em;
       }
     </style>
   </head>
@@ -146,13 +177,17 @@
     <div class="app">
       <header>
         <div class="title">Polyglot</div>
-        <div class="status">
-          <span class="dot" id="status-dot"></span>
-          <span id="status-text">Off</span>
-        </div>
       </header>
 
+      <!-- OUTGOING -->
       <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">You → them</div>
+          <div class="status-pill">
+            <span class="dot" id="out-dot"></span>
+            <span id="out-status">Off</span>
+          </div>
+        </div>
         <label>
           They speak
           <select id="target-language">
@@ -172,15 +207,36 @@
           </select>
         </label>
         <label>
-          Send translated audio to
-          <select id="output-device"><option value="">Loading…</option></select>
+          Send my translated voice to (Meet's mic)
+          <select id="out-device"><option value="">Loading…</option></select>
         </label>
-        <button id="toggle" class="toggle">Start translation</button>
-        <div id="error" class="err"></div>
+        <button id="out-toggle" class="toggle">Start</button>
+        <div id="out-error" class="err"></div>
       </div>
 
+      <!-- INCOMING -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Them → you (always English)</div>
+          <div class="status-pill">
+            <span class="dot" id="in-dot"></span>
+            <span id="in-status">Off</span>
+          </div>
+        </div>
+        <label>
+          Hear translation through (your speakers)
+          <select id="in-device"><option value="">Loading…</option></select>
+        </label>
+        <button id="in-toggle" class="toggle">Start</button>
+        <div id="in-error" class="err"></div>
+        <div style="font-size: 10px; color: var(--muted); margin-top: 2px;">
+          Captures audio from Chrome, Comet, Edge, Brave, Arc, etc. Make sure something is playing audio.
+        </div>
+      </div>
+
+      <!-- TRANSCRIPT -->
       <div class="panel" style="flex: 1; min-height: 0;">
-        <div style="font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em;">Transcript</div>
+        <div class="panel-title">Transcript</div>
         <div id="transcript" class="transcript"></div>
       </div>
     </div>
@@ -189,122 +245,186 @@
       const { invoke } = window.__TAURI__.core;
       const { listen } = window.__TAURI__.event;
 
-      const toggleBtn = document.getElementById('toggle');
-      const targetSelect = document.getElementById('target-language');
-      const outputDeviceSelect = document.getElementById('output-device');
-      const statusDot = document.getElementById('status-dot');
-      const statusText = document.getElementById('status-text');
-      const transcriptDiv = document.getElementById('transcript');
-      const errorDiv = document.getElementById('error');
+      // DOM refs
+      const dom = {
+        out: {
+          toggle: document.getElementById('out-toggle'),
+          target: document.getElementById('target-language'),
+          device: document.getElementById('out-device'),
+          dot: document.getElementById('out-dot'),
+          status: document.getElementById('out-status'),
+          err: document.getElementById('out-error'),
+        },
+        in: {
+          toggle: document.getElementById('in-toggle'),
+          device: document.getElementById('in-device'),
+          dot: document.getElementById('in-dot'),
+          status: document.getElementById('in-status'),
+          err: document.getElementById('in-error'),
+        },
+        transcript: document.getElementById('transcript'),
+      };
 
-      let running = false;
-      let currentLine = null;
-      let currentKind = null;
+      const state = {
+        outRunning: false,
+        inRunning: false,
+        currentLines: { outgoing: { source: null, translated: null }, incoming: { source: null, translated: null } },
+      };
 
-      async function loadOutputDevices() {
+      function setRunning(direction, running) {
+        const d = dom[direction === 'outgoing' ? 'out' : 'in'];
+        if (direction === 'outgoing') state.outRunning = running;
+        else state.inRunning = running;
+        d.toggle.textContent = running ? 'Stop' : 'Start';
+        d.toggle.classList.toggle('on', running);
+        d.toggle.disabled = false;
+        d.device.disabled = running;
+        if (direction === 'outgoing') dom.out.target.disabled = running;
+      }
+
+      function setStatus(direction, kind, msg) {
+        const d = dom[direction === 'outgoing' ? 'out' : 'in'];
+        d.dot.className = 'dot' + (kind === 'on' ? ' on' : kind === 'error' ? ' error' : '');
+        d.status.textContent = msg;
+      }
+
+      async function loadDevices() {
         try {
           const devices = await invoke('get_output_devices');
-          outputDeviceSelect.innerHTML = '';
-          devices.forEach((d) => {
-            const opt = document.createElement('option');
-            opt.value = d.name;
-            opt.textContent = d.name + (d.isDefault ? ' (default)' : '');
-            outputDeviceSelect.appendChild(opt);
-          });
-          const saved = localStorage.getItem('outputDevice');
+          const defaultDevice = devices.find((d) => d.isDefault);
           const blackhole = devices.find((d) => /blackhole/i.test(d.name));
-          if (saved && devices.some((d) => d.name === saved)) {
-            outputDeviceSelect.value = saved;
-          } else if (blackhole) {
-            outputDeviceSelect.value = blackhole.name;
+          const savedOut = localStorage.getItem('outDevice');
+          const savedIn = localStorage.getItem('inDevice');
+
+          for (const which of ['out', 'in']) {
+            const sel = dom[which].device;
+            const currentValue = sel.value;
+            sel.innerHTML = '';
+            devices.forEach((dev) => {
+              const opt = document.createElement('option');
+              opt.value = dev.name;
+              opt.textContent = dev.name + (dev.isDefault ? ' (default)' : '');
+              sel.appendChild(opt);
+            });
+            // Restore selection priority: current UI value (if still valid) > saved > preferred default
+            let chosen = '';
+            if (currentValue && devices.some((d) => d.name === currentValue)) {
+              chosen = currentValue;
+            } else {
+              const saved = which === 'out' ? savedOut : savedIn;
+              if (saved && devices.some((d) => d.name === saved)) {
+                chosen = saved;
+              } else if (which === 'out' && blackhole) {
+                chosen = blackhole.name;
+              } else if (defaultDevice) {
+                chosen = defaultDevice.name;
+              }
+            }
+            sel.value = chosen;
           }
         } catch (e) {
-          outputDeviceSelect.innerHTML = '<option value="">(error loading devices)</option>';
-          errorDiv.textContent = 'Failed to load output devices: ' + e;
+          dom.out.err.textContent = 'Failed to load devices: ' + e;
         }
       }
-      outputDeviceSelect.addEventListener('change', () => {
-        localStorage.setItem('outputDevice', outputDeviceSelect.value);
-      });
 
-      // Restore saved language
+      dom.out.device.addEventListener('change', () => {
+        localStorage.setItem('outDevice', dom.out.device.value);
+      });
+      dom.in.device.addEventListener('change', () => {
+        localStorage.setItem('inDevice', dom.in.device.value);
+      });
+      // Refresh device list when user clicks a dropdown — picks up newly
+      // connected Bluetooth headphones, USB devices, etc.
+      dom.out.device.addEventListener('mousedown', () => loadDevices());
+      dom.in.device.addEventListener('mousedown', () => loadDevices());
+
       const savedTarget = localStorage.getItem('targetLanguage');
-      if (savedTarget) targetSelect.value = savedTarget;
-      targetSelect.addEventListener('change', () => {
-        localStorage.setItem('targetLanguage', targetSelect.value);
+      if (savedTarget) dom.out.target.value = savedTarget;
+      dom.out.target.addEventListener('change', () => {
+        localStorage.setItem('targetLanguage', dom.out.target.value);
       });
 
-      function setStatus(state, msg) {
-        statusDot.className = 'dot' + (state === 'on' ? ' on' : state === 'error' ? ' error' : '');
-        statusText.textContent = msg;
-      }
-
-      function setRunning(isRunning) {
-        running = isRunning;
-        toggleBtn.textContent = isRunning ? 'Stop translation' : 'Start translation';
-        toggleBtn.classList.toggle('on', isRunning);
-        targetSelect.disabled = isRunning;
-        outputDeviceSelect.disabled = isRunning;
-        toggleBtn.disabled = false;
-      }
-
-      function appendTranscript(kind, delta, done) {
-        // If the kind switches mid-line, start a new line
-        if (currentKind !== kind || !currentLine) {
-          currentLine = document.createElement('div');
-          currentLine.className = 'line ' + kind;
-          transcriptDiv.appendChild(currentLine);
-          currentKind = kind;
-        }
-        if (delta) currentLine.textContent += delta;
-        transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
-        if (done) {
-          currentLine = null;
-          currentKind = null;
-        }
-      }
-
-      toggleBtn.addEventListener('click', async () => {
-        errorDiv.textContent = '';
-        toggleBtn.disabled = true;
+      dom.out.toggle.addEventListener('click', async () => {
+        dom.out.err.textContent = '';
+        dom.out.toggle.disabled = true;
         try {
-          if (running) {
-            await invoke('stop_session');
+          if (state.outRunning) {
+            await invoke('stop_outgoing');
           } else {
-            const target = targetSelect.value;
-            const outputDevice = outputDeviceSelect.value || null;
-            await invoke('start_session', { target, outputDevice });
+            await invoke('start_outgoing', {
+              target: dom.out.target.value,
+              outputDevice: dom.out.device.value || null,
+            });
           }
         } catch (e) {
-          errorDiv.textContent = String(e);
-          setStatus('error', 'Error');
-          toggleBtn.disabled = false;
+          dom.out.err.textContent = String(e);
+          setStatus('outgoing', 'error', 'Error');
+          dom.out.toggle.disabled = false;
         }
       });
+
+      dom.in.toggle.addEventListener('click', async () => {
+        dom.in.err.textContent = '';
+        dom.in.toggle.disabled = true;
+        try {
+          if (state.inRunning) {
+            await invoke('stop_incoming');
+          } else {
+            await invoke('start_incoming', {
+              outputDevice: dom.in.device.value || null,
+            });
+          }
+        } catch (e) {
+          dom.in.err.textContent = String(e);
+          setStatus('incoming', 'error', 'Error');
+          dom.in.toggle.disabled = false;
+        }
+      });
+
+      function appendTranscript(direction, kind, delta, done) {
+        const slot = state.currentLines[direction][kind];
+        let line = slot;
+        if (!line) {
+          line = document.createElement('div');
+          line.className = 'line ' + direction + ' ' + kind;
+          dom.transcript.appendChild(line);
+          state.currentLines[direction][kind] = line;
+        }
+        if (delta) line.textContent += delta;
+        dom.transcript.scrollTop = dom.transcript.scrollHeight;
+        if (done) {
+          state.currentLines[direction][kind] = null;
+        }
+      }
 
       listen('session-status', (event) => {
-        const { running: r, target, message } = event.payload;
-        setRunning(!!r);
+        const { direction, running, target, message } = event.payload;
+        if (!direction) return;
+        setRunning(direction, !!running);
         if (message) {
-          errorDiv.textContent = message;
-          setStatus('error', 'Error');
-        } else if (r) {
-          setStatus('on', target ? `Translating to ${target.toUpperCase()}` : 'Running');
+          dom[direction === 'outgoing' ? 'out' : 'in'].err.textContent = message;
+          setStatus(direction, 'error', 'Error');
+        } else if (running) {
+          const targetUpper = target ? target.toUpperCase() : '';
+          setStatus(direction, 'on', direction === 'outgoing' ? `→ ${targetUpper}` : 'EN');
         } else {
-          setStatus('off', 'Off');
+          setStatus(direction, 'off', 'Off');
         }
       });
 
       listen('transcript', (event) => {
-        const { kind, delta, done } = event.payload;
-        appendTranscript(kind, delta, done);
+        const { direction, kind, delta, done } = event.payload;
+        if (!direction || !kind) return;
+        appendTranscript(direction, kind, delta, done);
       });
 
       // Initial state
-      loadOutputDevices();
-      invoke('get_status').then((isRunning) => {
-        setRunning(isRunning);
-        setStatus(isRunning ? 'on' : 'off', isRunning ? 'Running' : 'Off');
+      loadDevices();
+      invoke('get_status').then((s) => {
+        setRunning('outgoing', s.outgoing);
+        setRunning('incoming', s.incoming);
+        setStatus('outgoing', s.outgoing ? 'on' : 'off', s.outgoing ? 'Running' : 'Off');
+        setStatus('incoming', s.incoming ? 'on' : 'off', s.incoming ? 'Running' : 'Off');
       }).catch(() => {});
     </script>
   </body>
